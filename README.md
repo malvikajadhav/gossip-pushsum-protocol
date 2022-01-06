@@ -36,3 +36,28 @@ Convergence in Gossip protocol is achieved when any one node listens to the rumo
 
 <b> Push sum:</b><br>
 The push sum algorithm in our converges when for one of the actors in the network the estimate ratio (s/w) does not change more than 10<sup>-10</sup> for three consecutive rounds. After convergence we print the time required for convergence. To reduce time of convergence we make each actor send a message to self to wake up and start the computation all over again.
+
+<b>Largest network that reached convergence:</b><br>
+For our implementation we managed to reach the following sizes for network:
+
+| Maximum nodes | Gossip | Pushsum | 
+|----------------------|---------------|----------------|
+|Full Network | 50000         | 150000            | 
+| Line Network  | 50000          | 95000           | 
+| 3D Grid      | 50000         | 100000          | 
+| Imperfect 3D Grid | 50000        | 25000          | 
+
+### Output
+We have attached output of out program for each topology for both the algorithms. We have taken network size = 100 <br>
+1.Full network:
+![full_network](https://user-images.githubusercontent.com/20522169/148422991-7741a79b-68d8-44ef-b240-571f03ed223b.jpg)
+
+2.Line network:
+![line](https://user-images.githubusercontent.com/20522169/148423049-4886b4fe-92a3-45f3-a1d8-5cce81ecf351.jpg)
+
+3.3-D Grid:
+![3D-grid](https://user-images.githubusercontent.com/20522169/148423077-18552840-49a0-456d-a96e-6b1c0d61d6f6.jpg)
+
+4.Imperfect 3-D:
+![imperfect-3d](https://user-images.githubusercontent.com/20522169/148423117-2e5b4033-bbf7-4dc4-a700-74d1d838265a.jpg)
+
