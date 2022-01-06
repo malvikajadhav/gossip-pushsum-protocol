@@ -10,6 +10,7 @@ open Akka.Actor
 open System
 open System.Diagnostics
 
+
 // Creating a Discriminated union to pass participant pool list
 type info =
 | Rumour of (int array * string * int)
@@ -108,8 +109,54 @@ let participant (mailbox : Actor<_>) =
         return! messageLoop()
     }
     messageLoop ()
+
+
+let pushsumParticipant (mailbox: Actor<_>) =
     
-    // Main Actor
+    let mutable s = 0.0
+    let mutable w = 0.0
+    let mutable sNew = 0.0
+    let mutable wNew = 0.0
+    let mutable ratioOld = 0.0
+    let mutable ratioNew = 0.0
+    let mutable diff : double = 0.0
+    let mutable pushsumCount = 0
+
+    let rec messageLoop () = 
+        actor {
+            let! msg = mailbox.Receive()
+            match msg with
+            | PushSum(xi, wi, myNeighbours, c) ->
+                if c = 1 then
+                    sNew <- s + xi
+                    wNew <- w + wi
+                    ratioNew <- sNew / wNew
+                    diff <- ratioNew - ratioOld
+                    if pushsumCount = 3 then
+                        mailbox.Context.System.Terminate() |> ignore
+                        converger <! Converged("Done")
+                    elif diff <= estimate then
+                        pushsumCount <- pushsumCount + 1
+                    else
+                        s <- sNew
+                        w <- wNew
+                        ratioOld <- s / w
+                        let selectRandom, newNeighbours = randomNeighbour myNeighbours
+                        participantenum.[selectRandom] <! PushSum(s/2.0, w/2.0, newNeighbours, 1)
+                        mailbox.Self <! PushSum(s, w, myNeighbours, 0)
+                else
+                    let selectRandom, newNeighbours = randomNeighbour myNeighbours
+                    participantenum.[selectRandom] <! PushSum(s / 2.0, w / 2.0, newNeighbours, 1)
+                    mailbox.Self <! PushSum(s, w, myNeighbours, 0)
+            |_ -> ()
+            return! messageLoop()
+        }
+    messageLoop ()
+
+
+
+
+// Main Actor
 let mainActor (mailbox : Actor<_>) = 
     
     // Specifying Rumour
@@ -134,6 +181,82 @@ let mainActor (mailbox : Actor<_>) =
                             [0 .. numNodes-1]
                                 |> List.map(fun i -> spawn system (sprintf "Participant_%d" i) pushsumParticipant )
                         participantenum <- Array.ofList(participantPool)
+
+                    // Full Topology
+                    if topology = "full" then
+                        fullTopo <- [|0 .. numNodes-1|]
+                        match algorithm with 
+                        | "gossip" ->
+                            timer.Start()
+                            let starter, _ = randomNeighbour fullTopo
+                            let neighbours = (Array.filter (fun elem -> elem <> starter) fullTopo)
+                            participantenum.[starter] <! Rumour(neighbours, rumour, 1)
+                        | "pushsum" ->
+                            timer.Start()
+                            let starter, _ = randomNeighbour fullTopo
+                            let neighbours = (Array.filter (fun elem -> elem <> starter) fullTopo)
+                            participantenum.[starter] <! PushSum(float starter, 1.0, neighbours, 1)
+                        |_ -> ()
+
+                   // 3D Topology
+                    elif topology = "3d" then
+                        let x : int = int ((float numNodes)**(1.0/3.0) + 1.0)
+                        let mutable topo = Array.zeroCreate numNodes
+                        for i in 0 .. numNodes-1 do
+                            let neighbours = (Array.filter (fun k -> k >= 0 && k < numNodes) [|i-1; i + 1; i - x; i + x; i - x*x; i + x*x|])
+                            topo.[i] <- neighbours
+                        threeDTopo <- topo
+                        match algorithm with
+                        | "gossip" ->
+                            timer.Start()
+                            let starter = Random().Next(numNodes)
+                            participantenum.[starter] <! Rumour(threeDTopo.[starter], rumour, 1)
+                        | "pushsum" ->
+                            timer.Start()
+                            let starter = Random().Next(numNodes)
+                            participantenum.[starter] <! PushSum(float starter, 1.0, threeDTopo.[starter], 1)
+                        |_ -> () 
+
+                    // Line Topology
+                    elif topology = "line" then
+                        let mutable topo = Array.zeroCreate numNodes
+                        for i in 0 .. numNodes-1 do
+                            let neighbours = (Array.filter (fun k -> k >= 0 && k < numNodes) [|i-1; i + 1|])
+                            topo.[i] <- neighbours
+                        lineTopo <- topo
+                        match algorithm with
+                        | "gossip" ->
+                            timer.Start()
+                            let starter = Random().Next(numNodes)
+                            participantenum.[starter] <! Rumour(lineTopo.[starter], rumour, 1)
+                        | "pushsum" ->
+                            timer.Start()
+                            let starter = Random().Next(numNodes)
+                            participantenum.[starter] <! PushSum(float starter, 1.0, lineTopo.[starter], 1)
+                        |_ -> ()
+                    
+                   // Imperfect 3D Topology
+                    elif topology = "imp3d" then
+                        fullTopo <- [|0 .. numNodes-1|]
+                        let x : int = int ((float numNodes)**(1.0/3.0) + 1.0)
+                        let mutable topo = Array.zeroCreate numNodes
+                        for i in 0 .. numNodes-1 do
+                            let neighbours = (Array.filter (fun k -> k >= 0 && k < numNodes) [|i-1; i + 1; i - x; i + x; i - x*x; i + x*x|])
+                            topo.[i] <- neighbours
+                            let exclusionList = Array.append topo.[i] [|i|]
+                            let finalneighbours = fullTopo |> Array.except exclusionList
+                            topo.[i]<- Array.append topo.[i] finalneighbours
+                        ImpthreeDTopo <- topo
+                        match algorithm with
+                        | "gossip" ->
+                           timer.Start()
+                           let starter = Random().Next(numNodes)
+                           participantenum.[starter] <! Rumour(ImpthreeDTopo.[starter], rumour, 1)
+                        | "pushsum" ->
+                           timer.Start()
+                           let starter = Random().Next(numNodes)
+                           participantenum.[starter] <! PushSum(float starter, 1.0, ImpthreeDTopo.[starter], 1)
+                        |_ -> ()
                 | _-> printfn "I am not what you expect"
                 return! messageLoop ()
             }
